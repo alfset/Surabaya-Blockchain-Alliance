@@ -252,8 +252,8 @@ export default function MintNFTPage() {
       setStatus("⏳ Preparing transaction...");
       const balance = await wallet.getBalance();
       const lovelace = balance.find((asset) => asset.unit === "lovelace")?.quantity || "0";
-      if (parseInt(lovelace) < 1_000_000) {
-        throw new Error("Insufficient balance. You need at least 1 ADA to handle tx fee.");
+      if (parseInt(lovelace) < 10_000_000) {
+        throw new Error("Insufficient balance. You need at least 10 ADA to mint an event NFT.");
       }
       const usedAddresses = await wallet.getUsedAddresses();
       const address = usedAddresses[0] || walletAddress;
@@ -288,6 +288,7 @@ export default function MintNFTPage() {
         label: "721",
         recipient: address,
       });
+      tx.sendLovelace(paymentRecipient, "10000000");
       const unsignedTx = await tx.build();
       const signedTx = await wallet.signTx(unsignedTx);
       const txHash = await wallet.submitTx(signedTx);
@@ -429,7 +430,7 @@ export default function MintNFTPage() {
                 className="btn bg-blue-600 cursor-pointer text-white border-none hover:bg-blue-800 w-full mt-2"
                 disabled={loading}
               >
-                {loading ? "Minting..." : "Mint NFT [0 ₳]"}
+                {loading ? "Minting..." : "Mint NFT [10 ₳]"}
               </button>
             )}
           </div>
@@ -444,7 +445,7 @@ export default function MintNFTPage() {
               <span className="text-green-500">Event NFT</span>
             </h1>
             <p className="text-gray-600 font-medium text-lg">
-              Create Event NFTs for your events for a fee of 0 ADA.
+              Create Event NFTs for your events for a fee of 10 ADA.
             </p>
           </div>
 
@@ -613,7 +614,6 @@ export default function MintNFTPage() {
       </div>
 
 
-      {/* Modal Connect Wallet */}
       {showWalletModal && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center">
           <div className="bg-white p-6 rounded-lg shadow-xl text-center space-y-4 max-w-md w-full">

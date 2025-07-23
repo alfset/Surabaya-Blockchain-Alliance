@@ -34,7 +34,7 @@ export default function EventsPage() {
   }, []);
 
   const handleEventsClick = (id: any) => {
-    router.push(`/join/event/${id}`);
+    router.push(`/Join/event/${id}`);
   };
 
   return (
