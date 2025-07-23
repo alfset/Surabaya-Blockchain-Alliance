@@ -252,8 +252,8 @@ export default function MintNFTPage() {
       setStatus("⏳ Preparing transaction...");
       const balance = await wallet.getBalance();
       const lovelace = balance.find((asset) => asset.unit === "lovelace")?.quantity || "0";
-      if (parseInt(lovelace) < 10_000_000) {
-        throw new Error("Insufficient balance. You need at least 10 ADA to mint an event NFT.");
+      if (parseInt(lovelace) < 1_000_000) {
+        throw new Error("Insufficient balance. You need at least 1 ADA to handle tx fee.");
       }
       const usedAddresses = await wallet.getUsedAddresses();
       const address = usedAddresses[0] || walletAddress;
