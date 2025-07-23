@@ -288,7 +288,6 @@ export default function MintNFTPage() {
         label: "721",
         recipient: address,
       });
-      tx.sendLovelace(paymentRecipient, "10000000");
       const unsignedTx = await tx.build();
       const signedTx = await wallet.signTx(unsignedTx);
       const txHash = await wallet.submitTx(signedTx);
@@ -430,7 +429,7 @@ export default function MintNFTPage() {
                 className="btn bg-blue-600 cursor-pointer text-white border-none hover:bg-blue-800 w-full mt-2"
                 disabled={loading}
               >
-                {loading ? "Minting..." : "Mint NFT [10 ₳]"}
+                {loading ? "Minting..." : "Mint NFT [0 ₳]"}
               </button>
             )}
           </div>
@@ -445,7 +444,7 @@ export default function MintNFTPage() {
               <span className="text-green-500">Event NFT</span>
             </h1>
             <p className="text-gray-600 font-medium text-lg">
-              Create Event NFTs for your events for a fee of 10 ADA.
+              Create Event NFTs for your events for a fee of 0 ADA.
             </p>
           </div>
 
