@@ -376,8 +376,8 @@ export default function EventDetailsPage() {
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder={event.address
-                    ? `${event.address}`
+                  placeholder={event.creator
+                    ? `${event.creator}`
                     : "Not Provided"}
                   className="input text-gray-600 placeholder:text-gray-700 w-full"
                   disabled />
@@ -427,7 +427,7 @@ export default function EventDetailsPage() {
                   <div className="w-full">
                     {event.policyId && event.assetName && (
                       <Link
-                        href={`/join/event/${id}/claim`}
+                        href={`/Join/event/${id}/claim`}
                         className="btn w-full bg-blue-600 text-white hover:bg-transparent hover:text-blue-700 hover:border-blue-700 shadow-xl rounded-md"
                       >
                         <FaGift />
