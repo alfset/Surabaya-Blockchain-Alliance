@@ -409,7 +409,7 @@ const handleSignMinter = async () => {
       };
 
       await setDoc(doc(db, "nft-images", eventId), nftData);
-      const txLink = `https://preview.cexplorer.io/tx/${txHash}`;
+      const txLink = `https://cexplorer.io/tx/${txHash}`;
       const shortTxHash = `${txHash.slice(0, 6)}...${txHash.slice(-4)}`;
       setStatus(`✅ Event Created! ${shortTxHash} View Transaction: ${txLink}`);
     } catch (error) {
