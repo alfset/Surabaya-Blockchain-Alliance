@@ -97,7 +97,7 @@ export default function DoQuestPage() {
   }, [authReady, router]);
 
 
-  const canClaim = quest.status.toLowerCase() === "end" || isQuestExpired;
+  const canClaim = quest?.status?.toLowerCase() === "end" || isQuestExpired;
 
   const fetchQuestAndUserData = useCallback(async () => {
     if (!router.isReady || !id || typeof id !== "string" || !authReady || !auth.currentUser) {
@@ -466,15 +466,10 @@ export default function DoQuestPage() {
             <div className="py-1">
               <button
                 className={`btn btn-${isQuestExpired ? "secondary cursor-not-allowed" : "success cursor-pointer"} btn-block`}
-                disabled={!canClaim}
+                disabled={isQuestExpired}
               >
                 🏆 Claim <strong>{eligiblePoints} {quest.tokenName}</strong> Rewards
               </button>
-              {!canClaim && !isQuestExpired && (
-                <p className="mt-2 text-yellow-600 font-semibold text-center">
-                  Quest not ended yet
-                </p>
-              )}
             </div>
           </div>
         </div>
@@ -489,7 +484,7 @@ export default function DoQuestPage() {
           <div className="p-10 w-full text-end z-50 space-y-2 flex items-center justify-start">
             <div className="space-y-2">
               <span className="font-semibold text-4xl bg-gradient-to-r from-sky-400 to-indigo-600 bg-clip-text text-transparent break-words whitespace-nowrap">
-                Rewards Pool: <span className="text-white ml-2">{quest.reward} {quest.tokenName}</span>
+                Rewards: <span className="text-white ml-2">{quest.reward} {quest.tokenName}</span>
               </span>
               <div className="space-y-2">
                 <div className="flex justify-between">

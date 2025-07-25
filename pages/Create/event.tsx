@@ -300,7 +300,7 @@ export default function MintNFTPage() {
     handleOAuthCallback();
   }, [router]);
 
-  const handleSignMinter = async () => {
+const handleSignMinter = async () => {
     if (!user) {
       setStatus("❌ User not authenticated. Please sign in.");
       return;
@@ -325,16 +325,12 @@ export default function MintNFTPage() {
       setStatus("❌ Please provide a meeting link.");
       return;
     }
-    const linkPrefixes = {
-      gmeet: "https://meet.google.com/",
-      youtube: "https://youtube.com/watch?v=",
-      twitter: "https://x.com/i/spaces/",
-    };
-    if (!form.meetLink.startsWith(linkPrefixes[form.platform])) {
+    if (
+      (form.platform === "gmeet" && !form.meetLink.startsWith("https://meet.google.com/")) ||
+      (form.platform === "zoom" && !form.meetLink.startsWith("https://zoom.us/j/"))
+    ) {
       setStatus(
-        `❌ Invalid ${
-          platformOptions.find((opt) => opt.value === form.platform)?.label
-        } link format.`
+        `❌ Invalid ${form.platform === "gmeet" ? "Google Meet" : "Zoom"} link format.`
       );
       return;
     }
@@ -345,7 +341,7 @@ export default function MintNFTPage() {
       const balance = await wallet.getBalance();
       const lovelace = balance.find((asset) => asset.unit === "lovelace")?.quantity || "0";
       if (parseInt(lovelace) < 1_000_000) {
-        throw new Error("Insufficient balance. You need at least 10 ADA to mint an event NFT.");
+        throw new Error("Insufficient balance. You need at least 1 ADA to mint an event NFT.");
       }
       const usedAddresses = await wallet.getUsedAddresses();
       const address = usedAddresses[0] || walletAddress;
@@ -361,7 +357,7 @@ export default function MintNFTPage() {
               mediaType: "image/jpeg",
               creator: user.uid,
               eventDateTime,
-              meetLink: form.meetLink.slice(0, 64),
+              meetLink: form.meetLink.slice(0, 64) || "",
               timezone: form.timezone,
               tags: form.tags
                 ? form.tags.split(",").map((tag) => tag.trim().slice(0, 64)).slice(0, 10)
@@ -380,7 +376,6 @@ export default function MintNFTPage() {
         label: "721",
         recipient: address,
       });
-      tx.sendLovelace(paymentRecipient, "10000000");
       const unsignedTx = await tx.build();
       const signedTx = await wallet.signTx(unsignedTx);
       const txHash = await wallet.submitTx(signedTx);
@@ -393,9 +388,7 @@ export default function MintNFTPage() {
       }
 
       const asset = assetInfos[0];
-      const assetOwner = await getAssetOwner(
-        `${asset.policyId}${Buffer.from(asset.assetName).toString("hex")}`
-      );
+      const assetOwner = await getAssetOwner(`${asset.policyId}${Buffer.from(asset.assetName).toString("hex")}`);
       if (!assetOwner) {
         throw new Error("Unable to retrieve asset fingerprint.");
       }
@@ -416,7 +409,7 @@ export default function MintNFTPage() {
       };
 
       await setDoc(doc(db, "nft-images", eventId), nftData);
-      const txLink = `https://cexplorer.io/tx/${txHash}`;
+      const txLink = `https://preview.cexplorer.io/tx/${txHash}`;
       const shortTxHash = `${txHash.slice(0, 6)}...${txHash.slice(-4)}`;
       setStatus(`✅ Event Created! ${shortTxHash} View Transaction: ${txLink}`);
     } catch (error) {
@@ -528,28 +521,12 @@ export default function MintNFTPage() {
                 {loading ? "Minting..." : "Mint NFT [0 ₳]"}
               </button>
             )}
-            {form.platform === "gmeet" &&
-              !user.providerData.find(
-                (provider) => provider.providerId === GoogleAuthProvider.PROVIDER_ID
-              ) && (
-                <button
-                  onClick={handleSignInWithGoogle}
-                  className="btn bg-blue-500 cursor-pointer text-white border-none hover:bg-blue-700 w-full mt-2"
-                  disabled={loading}
-                >
-                  Sign in with Google for Meet
-                </button>
-              )}
-            {form.platform === "gmeet" &&
-              user.providerData.find(
-                (provider) => provider.providerId === GoogleAuthProvider.PROVIDER_ID
-              ) && (
-                <button
-                  onClick={generateMeetLink}
-                  className="btn bg-green-500 cursor-pointer text-white border-none hover:bg-green-700 w-full mt-2"
-                  disabled={loading || !form.date || !form.time}
-                >
-                  Generate Google Meet Link
+            {form.platform === "gmeet" && (
+              <button
+                disabled
+                className="btn bg-gray-400 cursor-not-allowed text-white border-none w-full mt-2"
+              >
+                  Google Meet (Coming Soon)
                 </button>
               )}
           </div>
@@ -660,7 +637,7 @@ export default function MintNFTPage() {
                     form.platform === "gmeet"
                       ? "https://meet.google.com/..."
                       : form.platform === "youtube"
-                      ? "https://youtube.com/watch?v=..."
+                      ? "https://www.youtube.com/watch?v="
                       : "https://x.com/i/spaces/..."
                   }
                   value={form.meetLink}
