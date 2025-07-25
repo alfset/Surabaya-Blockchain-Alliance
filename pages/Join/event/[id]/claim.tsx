@@ -262,7 +262,7 @@ export default function ClaimNFTPage() {
       const txHash = await wallet.submitTx(signedTx);
 
       // Removed the 30-second wait; directly show success message
-      const txLink = `https://preview.cexplorer.io/tx/${txHash}`;
+      const txLink = `https://cexplorer.io/tx/${txHash}`;
       const shortTxHash = `${txHash.slice(0, 6)}...${txHash.slice(-4)}`;
       setStatus(`✅ NFT claimed successfully! ${shortTxHash} View Transaction: ${txLink}`);
 

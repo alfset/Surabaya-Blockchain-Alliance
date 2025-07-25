@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
-import { doc, getDoc } from "firebase/firestore";
+import { writeBatch, doc, getDoc, collection, getDocs } from "firebase/firestore";
 import { db, auth } from "@/config";
 import { onAuthStateChanged } from "firebase/auth";
 import { toast, ToastContainer } from "react-toastify";
@@ -10,13 +10,19 @@ import { BrowserWallet } from "@meshsdk/core";
 export default function FinalizeQuestPage() {
   const router = useRouter();
   const { id: questId } = router.query;
+
   const [loading, setLoading] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [quest, setQuest] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [wallet, setWallet] = useState<BrowserWallet | null>(null);
 
+  const [wallets, setWallets] = useState<{ id: string; name: string }[]>([]);
+  const [showWalletModal, setShowWalletModal] = useState(false);
+  const [wallet, setWallet] = useState<BrowserWallet | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+
+  // Auth listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -25,6 +31,7 @@ export default function FinalizeQuestPage() {
     return () => unsubscribe();
   }, []);
 
+  // Fetch quest when ready
   useEffect(() => {
     if (questId && authReady) {
       const fetchQuest = async () => {
@@ -32,7 +39,10 @@ export default function FinalizeQuestPage() {
           const questRef = doc(db, "quests", questId as string);
           const questSnap = await getDoc(questRef);
           if (questSnap.exists()) {
-            setQuest(questSnap.data());
+            const questData = questSnap.data();
+            setQuest(questData);
+            // Log quest creator for debugging
+            console.log("Quest creator UID:", questData.creatorUid);
           } else {
             setError("Quest not found");
           }
@@ -44,14 +54,43 @@ export default function FinalizeQuestPage() {
     }
   }, [questId, authReady]);
 
-  const handleConnectWallet = async () => {
+  // Fetch available wallets on mount
+  useEffect(() => {
+    const fetchWallets = async () => {
+      try {
+        const availableWallets = await BrowserWallet.getAvailableWallets();
+        setWallets(availableWallets);
+        if (availableWallets.length === 0) {
+          toast.warn("No Cardano wallets found. Please install a wallet like Nami or Eternl.");
+        }
+      } catch (error) {
+        toast.error("Failed to fetch wallets.");
+      }
+    };
+    fetchWallets();
+  }, []);
+
+  const handleWalletSelect = async (walletId: string) => {
+    setShowWalletModal(false);
     try {
-      const connectedWallet = await BrowserWallet.enable("eternl"); 
+      const connectedWallet = await BrowserWallet.enable(walletId);
       setWallet(connectedWallet);
-      toast.success("Wallet connected");
-    } catch (err: any) {
-      toast.error(`Wallet connection failed: ${err.message}`);
+      const address = await connectedWallet.getChangeAddress();
+      setWalletAddress(address);
+      toast.success(`Wallet connected: ${address.slice(0, 10)}...${address.slice(-6)}`);
+    } catch (error: any) {
+      toast.error(`Failed to connect wallet: ${error.message || error}`);
     }
+  };
+
+  // Placeholder: implement your transaction building logic here
+  const buildUnsignedTxs = async (
+    allocations: { address: string; amount: number }[],
+    wallet: BrowserWallet
+  ): Promise<string[]> => {
+    // TODO: Use Mesh SDK to build unsigned transactions for allocations
+    // This is an example stub returning empty array for demonstration
+    return [];
   };
 
   const handleFinalize = async () => {
@@ -70,47 +109,65 @@ export default function FinalizeQuestPage() {
 
     setLoading(true);
     try {
-      // Fetch unsigned transactions
-      const response = await fetch("/api/finalize-quest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questId, userId: user.uid }),
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error);
+      // 1. Fetch participants' progress from Firestore
+      const participantsRef = collection(db, "questProgress", questId as string, "participants");
+      const participantsSnapshot = await getDocs(participantsRef);
+
+      if (participantsSnapshot.empty) {
+        toast.error("No participants found for this quest");
+        setLoading(false);
+        return;
       }
 
-      // Sign each transaction
-      const { unsignedTxs } = result;
+      // 2. Calculate allocations (example: fixed 100 tokens)
+      const allocations = participantsSnapshot.docs.map((doc) => ({
+        address: doc.data().address as string,
+        amount: 100, // replace with your reward logic
+        participantDocId: doc.id,
+      }));
+
+      // 3. Build unsigned transactions (your existing logic)
+      const unsignedTxs = await buildUnsignedTxs(allocations, wallet);
+
+      if (!unsignedTxs || !Array.isArray(unsignedTxs) || unsignedTxs.length === 0) {
+        throw new Error("No unsigned transactions generated");
+      }
+
+      // 4. Sign each transaction
       const signedTxs: string[] = [];
       for (const unsignedTx of unsignedTxs) {
         const signedTx = await wallet.signTx(unsignedTx);
         signedTxs.push(signedTx);
       }
 
-      // Submit signed transactions
-      for (const [index, signedTx] of signedTxs.entries()) {
-        const submitResponse = await fetch("/api/add-eligible", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            questId,
-            address: result.allocations?.[index]?.address || "unknown",
-            amount: result.allocations?.[index]?.amount || 0,
-            signedTx,
-          }),
-        });
-        const submitResult = await submitResponse.json();
-        if (!submitResponse.ok) {
-          throw new Error(`Failed to submit transaction ${index + 1}: ${submitResult.error}`);
-        }
-      }
+      // 5. Write eligibility and update quest status in Firestore using batch
+      const batch = writeBatch(db);
 
-      toast.success(result.message);
+      // Mark each participant as eligible (or rewarded) and store signedTx (optional)
+      allocations.forEach(({ participantDocId, amount }, idx) => {
+        const participantDocRef = doc(db, "questProgress", questId as string, "participants", participantDocId);
+        batch.update(participantDocRef, {
+          status: "rewarded",
+          rewardAmount: amount,
+          signedTx: signedTxs[idx],
+          rewardedAt: new Date().toISOString(),
+        });
+      });
+
+      // Also update quest status to "ended"
+      const questDocRef = doc(db, "quests", questId as string);
+      batch.update(questDocRef, {
+        status: "ended",
+        endedAt: new Date().toISOString(),
+      });
+
+      // Commit all batched writes atomically
+      await batch.commit();
+
+      toast.success("Quest finalized successfully!");
       router.push(`/quest/${questId}`);
     } catch (error: any) {
-      toast.error(`Failed to finalize quest: ${error.message}`);
+      toast.error(`Failed to finalize quest: ${error.message || error}`);
     } finally {
       setLoading(false);
     }
@@ -132,8 +189,6 @@ export default function FinalizeQuestPage() {
     );
   }
 
-  const endDate = new Date(quest.endDate);
-  const isEnded = new Date() >= endDate;
   const isCreator = user && quest.creatorUid === user.uid;
   const isAlreadyFinalized = quest.status === "ended";
 
@@ -141,28 +196,65 @@ export default function FinalizeQuestPage() {
     <div className="min-h-screen bg-white flex items-center justify-center">
       <div className="bg-white w-full max-w-md shadow-2xl p-8 rounded-lg">
         <h1 className="text-2xl font-bold mb-4">Finalize Quest: {quest.name}</h1>
+
         {isAlreadyFinalized ? (
           <p className="text-green-600">This quest has already been finalized.</p>
         ) : !isCreator ? (
           <p className="text-red-600">Only the quest creator can finalize this quest.</p>
-        ) : !isEnded ? (
-          <p className="text-yellow-600">
-            Quest has not ended yet. End date: {endDate.toLocaleDateString()}
-          </p>
         ) : (
           <>
             <p className="mb-4">
               Finalize the quest to allocate rewards based on user progress. This will require signing
               transactions with your wallet.
             </p>
-            {!wallet && (
-              <button
-                className="btn w-full bg-blue-600 text-white hover:bg-blue-700 mb-4"
-                onClick={handleConnectWallet}
-              >
-                Connect Wallet
-              </button>
+
+            {!wallet ? (
+              <>
+                <button
+                  className="btn w-full bg-blue-600 text-white hover:bg-blue-700 mb-4"
+                  onClick={() => setShowWalletModal(true)}
+                >
+                  Connect Wallet
+                </button>
+
+                {/* Wallet selection modal */}
+                {showWalletModal && (
+                  <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center">
+                    <div className="bg-white p-6 rounded-lg shadow-xl text-center space-y-4 max-w-md w-full">
+                      <h2 className="text-xl font-bold">Select a Wallet</h2>
+                      {wallets.length === 0 && (
+                        <p className="text-sm text-red-600">
+                          No wallets found. Please install a Cardano wallet extension.
+                        </p>
+                      )}
+                      {wallets.map((w) => (
+                        <button
+                          key={w.id}
+                          onClick={() => handleWalletSelect(w.id)}
+                          className="btn w-full my-2"
+                        >
+                          {w.name}
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => setShowWalletModal(false)}
+                        className="btn btn-ghost mt-4"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="mb-4">
+                Connected wallet:{" "}
+                <span className="font-mono">
+                  {walletAddress?.slice(0, 10)}...{walletAddress?.slice(-6)}
+                </span>
+              </p>
             )}
+
             <button
               className="btn w-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
               onClick={handleFinalize}
@@ -172,6 +264,7 @@ export default function FinalizeQuestPage() {
             </button>
           </>
         )}
+
         <ToastContainer position="bottom-right" autoClose={3000} />
       </div>
     </div>

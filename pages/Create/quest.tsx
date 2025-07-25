@@ -490,14 +490,8 @@ export default function CreateQuestPage() {
                 <button className="btn btn-primary bg-blue-500 text-white hover:bg-blue-600" onClick={() => addTask("Follow Twitter")}>
                   Add Follow Twitter Task
                 </button>
-                <button className="btn btn-primary bg-blue-500 text-white hover:bg-blue-600" onClick={() => addTask("Join Discord")}>
-                  Add Join Discord Task
-                </button>
                 <button className="btn btn-primary bg-blue-500 text-white hover:bg-blue-600" onClick={() => addTask("Retweet Tweet")}>
                   Add Retweet Tweet Task
-                </button>
-                <button className="btn btn-primary bg-blue-500 text-white hover:bg-blue-600" onClick={() => addTask("Like Tweet")}>
-                  Add Like Tweet Task
                 </button>
                 <button className="btn btn-primary bg-blue-500 text-white hover:bg-blue-600" onClick={() => addTask("Visit Website")}>
                   Add Visit Website Task
