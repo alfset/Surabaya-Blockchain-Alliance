@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { getAssetInfoFromTx, getAssetOwner } from "@/utils/indexing";
 import { BrowserWallet, Transaction, ForgeScript } from "@meshsdk/core";
 import { uploadFile } from "../../utils/upload";
-import { FaCalendarCheck, FaGoogle, FaVideo, FaWallet } from "react-icons/fa";
+import { FaCalendarCheck, FaGoogle, FaVideo, FaWallet, FaTwitter } from "react-icons/fa";
 import Link from "next/link";
 import Select from "react-select";
 import { auth, db } from "../../config";
@@ -13,6 +13,8 @@ import ImageWithFallback from "@/components/image-fallback";
 import LoadingScreen from "@/components/loading-screen";
 import AlertMessage from "@/components/alert-message";
 import TagsInput from "@/components/tags";
+import { getAuth, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import axios from "axios";
 
 const timezones = [
   { value: "UTC", label: "UTC" },
@@ -28,6 +30,8 @@ const paymentRecipient =
   process.env.PAYMENT_RECIPIENT_ADDRESS ||
   "addr_test1qzf333svyuyxrt8aajhgjmews0737sf69uvn4xyt4ny2ent88fhr8q5eqrdqfhaqcu4fcd2hqfz6fw4h57jlgzfp6rlsvj37jm";
 const policyId = "a727399922a075addd9d2ea1b494feb2b774f721d988e48b92fa89d2";
+
+const SCOPES = ['https://www.googleapis.com/auth/meetings.space.created'];
 
 const stringToHex = (str) =>
   [...str].map((c) => ("0" + c.charCodeAt(0).toString(16)).slice(-2)).join("");
@@ -95,27 +99,27 @@ export default function MintNFTPage() {
       ),
     },
     {
-      value: "zoom",
-      label: "Zoom",
-      icon: (
-        <svg height="20" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="zoom-gradient" x1="0.952" x2="497.137" y1="511.048" y2="14.862" gradientUnits="userSpaceOnUse">
-              <stop offset="0" stopColor="#0079ff" />
-              <stop offset="1" stopColor="#00c2ff" />
-            </linearGradient>
-          </defs>
-          <path fill="url(#zoom-gradient)" d="M256,0C114.615,0,0,114.615,0,256S114.615,512,256,512,512,397.385,512,256,397.385,0,256,0Zm65.382,328.892a9.268,9.268,0,0,1-9.267,9.268H155.145a45.812,45.812,0,0,1-45.812-45.812V183.108a9.268,9.268,0,0,1,9.268-9.268h156.97a45.811,45.811,0,0,1,45.811,45.811Zm81.285,3.235a4.219,4.219,0,0,1-6.659,3.442l-66.656-47.233V223.663l66.656-47.233a4.22,4.22,0,0,1,6.659,3.443Z" />
-        </svg>
-      ),
+      value: "youtube",
+      label: "YouTube",
+      icon: <FaVideo className="text-red-600" />,
+    },
+    {
+      value: "twitter",
+      label: "Twitter Space",
+      icon: <FaTwitter className="text-black" />,
     },
   ];
 
-
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((firebaseUser) => {
+    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
+        const providerData = firebaseUser.providerData.find(
+          (provider) => provider.providerId === GoogleAuthProvider.PROVIDER_ID
+        );
+        if (!providerData && form.platform === "gmeet") {
+          setStatus("⚠️ Please sign in with Google to create Google Meet links.");
+        }
       } else {
         router.push("/signin");
       }
@@ -123,7 +127,7 @@ export default function MintNFTPage() {
     });
 
     return () => unsubscribe();
-  }, [router]);
+  }, [router, form.platform]);
 
   useEffect(() => {
     if (!user) return;
@@ -185,32 +189,116 @@ export default function MintNFTPage() {
     if (Array.isArray(tags)) {
       tagsArray = tags;
     } else if (typeof tags === "string") {
-      tagsArray = tags.split(",").map(t => t.trim()).filter(t => t.length > 0);
+      tagsArray = tags.split(",").map((t) => t.trim()).filter((t) => t.length > 0);
     }
     setForm((prev) => ({ ...prev, tags: tagsArray.join(",") }));
-    console.log("tags : " + form.tags)
+    console.log("Tags:", form.tags);
   };
 
+  const handleSignInWithGoogle = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.addScope(SCOPES.join(" "));
+      const result = await signInWithPopup(auth, provider);
+      setUser(result.user);
+      setStatus("✅ Signed in with Google. Please generate the Google Meet link.");
+    } catch (error) {
+      console.error("Google sign-in error:", error);
+      setStatus(`❌ Failed to sign in with Google: ${error.message}`);
+    }
+  };
+
+  const generateMeetLink = async () => {
+    if (form.platform !== "gmeet") {
+      const randomKey = Math.random().toString(36).substring(2, 10);
+      let meetLink = "";
+      switch (form.platform) {
+        case "youtube":
+          meetLink = `https://youtube.com/watch?v=${randomKey}`;
+          break;
+        case "twitter":
+          meetLink = `https://x.com/i/spaces/${randomKey}`;
+          break;
+        default:
+          return;
+      }
+      setForm((prev) => ({ ...prev, meetLink }));
+      setStatus("✅ Meeting link generated.");
+      return;
+    }
+
+    if (!user) {
+      setStatus("❌ User not authenticated. Please sign in.");
+      return;
+    }
+
+    if (!form.date || !form.time) {
+      setStatus("❌ Please provide both date and time for the event.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setStatus("⏳ Redirecting to Google OAuth...");
+
+      const clientId = "69379032730-q8vsfifc8esnh1njvahbiavefhltugha.apps.googleusercontent.com";
+      const redirectUri = process.env.NEXT_BASE_URL
+        ? `${process.env.NEXT_BASE_URL}/Create/event`
+        : "http://localhost:3000/Create/event";
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+        `client_id=${clientId}&` +
+        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+        `response_type=code&` +
+        `scope=${encodeURIComponent(SCOPES.join(" "))}&` +
+        `access_type=offline&` +
+        `prompt=consent`;
+
+      window.location.href = authUrl;
+    } catch (error) {
+      console.error("Error initiating Google OAuth:", error);
+      setStatus(`❌ Failed to initiate Google OAuth: ${error.message}`);
+    }
+  };
 
   useEffect(() => {
-    if (form.date && form.time && form.platform) {
-      const meetLink = generateMeetLink(form.platform, form.date, form.time);
-      setForm((prev) => ({ ...prev, meetLink }));
-    }
-  }, [form.date, form.time, form.platform]);
+    const handleOAuthCallback = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get("code");
+      if (code) {
+        try {
+          setLoading(true);
+          setStatus("⏳ Processing OAuth callback...");
 
-  const generateMeetLink = (platform, date, time) => {
-    if (!date || !time) return "";
-    const randomKey =
-      platform === "zoom"
-        ? Math.floor(1000000000 + Math.random() * 9000000000).toString()
-        : `${Math.random().toString(36).substring(2, 5)}-${Math.random()
-          .toString(36)
-          .substring(2, 6)}-${Math.random().toString(36).substring(2, 5)}`;
-    return platform === "zoom"
-      ? `https://zoom.us/j/${randomKey}`
-      : `https://meet.google.com/${randomKey}`;
-  };
+          const response = await axios.post(
+            "/api/create-meet-space",
+            { code },
+            {
+              headers: { "Content-Type": "application/json" },
+            }
+          );
+          const meetLink = response.data.meetLink;
+          if (!meetLink) {
+            throw new Error("Failed to generate Google Meet link.");
+          }
+
+          setForm((prev) => ({ ...prev, meetLink }));
+          setStatus("✅ Google Meet link generated successfully.");
+          router.replace(router.pathname, undefined, { shallow: true });
+        } catch (error) {
+          console.error("Error processing OAuth callback:", error);
+          setStatus(
+            `❌ Failed to process OAuth callback: ${
+              error.response?.data?.error || error.message
+            }`
+          );
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+
+    handleOAuthCallback();
+  }, [router]);
 
   const handleSignMinter = async () => {
     if (!user) {
@@ -237,12 +325,16 @@ export default function MintNFTPage() {
       setStatus("❌ Please provide a meeting link.");
       return;
     }
-    if (
-      (form.platform === "gmeet" && !form.meetLink.startsWith("https://meet.google.com/")) ||
-      (form.platform === "zoom" && !form.meetLink.startsWith("https://zoom.us/j/"))
-    ) {
+    const linkPrefixes = {
+      gmeet: "https://meet.google.com/",
+      youtube: "https://youtube.com/watch?v=",
+      twitter: "https://x.com/i/spaces/",
+    };
+    if (!form.meetLink.startsWith(linkPrefixes[form.platform])) {
       setStatus(
-        `❌ Invalid ${form.platform === "gmeet" ? "Google Meet" : "Zoom"} link format.`
+        `❌ Invalid ${
+          platformOptions.find((opt) => opt.value === form.platform)?.label
+        } link format.`
       );
       return;
     }
@@ -252,7 +344,7 @@ export default function MintNFTPage() {
       setStatus("⏳ Preparing transaction...");
       const balance = await wallet.getBalance();
       const lovelace = balance.find((asset) => asset.unit === "lovelace")?.quantity || "0";
-      if (parseInt(lovelace) < 10_000_000) {
+      if (parseInt(lovelace) < 1_000_000) {
         throw new Error("Insufficient balance. You need at least 10 ADA to mint an event NFT.");
       }
       const usedAddresses = await wallet.getUsedAddresses();
@@ -269,7 +361,7 @@ export default function MintNFTPage() {
               mediaType: "image/jpeg",
               creator: user.uid,
               eventDateTime,
-              meetLink: form.meetLink.slice(0, 64) || "",
+              meetLink: form.meetLink.slice(0, 64),
               timezone: form.timezone,
               tags: form.tags
                 ? form.tags.split(",").map((tag) => tag.trim().slice(0, 64)).slice(0, 10)
@@ -301,7 +393,9 @@ export default function MintNFTPage() {
       }
 
       const asset = assetInfos[0];
-      const assetOwner = await getAssetOwner(`${asset.policyId}${Buffer.from(asset.assetName).toString("hex")}`);
+      const assetOwner = await getAssetOwner(
+        `${asset.policyId}${Buffer.from(asset.assetName).toString("hex")}`
+      );
       if (!assetOwner) {
         throw new Error("Unable to retrieve asset fingerprint.");
       }
@@ -343,12 +437,15 @@ export default function MintNFTPage() {
     }
     let src = imageUrl;
     if (imageUrl.startsWith("ipfs://")) {
-      src = `https://sapphire-managing-narwhal-834.mypinata.cloud/ipfs/${imageUrl.replace("ipfs://", "")}`;
+      src = `https://sapphire-managing-narwhal-834.mypinata.cloud/ipfs/${imageUrl.replace(
+        "ipfs://",
+        ""
+      )}`;
     } else if (!imageUrl.startsWith("https://") && !imageUrl.startsWith("data:image/")) {
       src = `https://sapphire-managing-narwhal-834.mypinata.cloud/ipfs/${imageUrl}`;
     }
 
-    return <ImageWithFallback src={src} />
+    return <ImageWithFallback src={src} />;
   };
 
   if (checkingAuth) {
@@ -360,15 +457,11 @@ export default function MintNFTPage() {
 
   return (
     <section className="relative min-h-screen flex flex-col text-black overflow-hidden bg-white">
-      <div className="flex justify-between gap-10 px-40">
+      <div className="flex justify-between gap-10 px-10 sm:px-20 md:px-40">
         <div className="space-y-3 w-full">
           <div className="card bg-base-100 image-full h-96 w-full shadow-none">
-            <figure>
-              {form.image && <div className="h-full">{renderImage(form.image)}</div>}
-            </figure>
+            <figure>{form.image && <div className="h-full">{renderImage(form.image)}</div>}</figure>
             <div className="card-body flex flex-col h-full">
-
-              {/* Title & Description */}
               <div className="flex flex-col justify-start items-start space-y-2 mt-auto">
                 <div className="space-y-1">
                   <h2 className="card-title gap-3 text-4xl">
@@ -376,10 +469,8 @@ export default function MintNFTPage() {
                   </h2>
                   <p>{form.description || "Event Description Preview"}</p>
                 </div>
-
                 <div className="flex gap-4">
-                  {/* Date & Time */}
-                  {(form.date && form.time) && (
+                  {form.date && form.time && (
                     <button className="btn btn-sm btn-outline-primary text-blue-800">
                       <FaCalendarCheck />
                       <span className="pt-1">
@@ -391,25 +482,31 @@ export default function MintNFTPage() {
                       </span>
                     </button>
                   )}
-
-                  {/* Enter Room */}
-                  {form.meetLink && (() => {
-                    const platform = platformOptions.find((opt) => opt.value === form.platform);
-                    return platform ? (
-                      <Link className={`btn btn-sm ${platform.value == 'zoom' ? 'btn-white': 'btn-primary'}`} target="_blank" href={form.meetLink}>
-                        {platform.icon}
-                        <span className="pt-1">{platform.label}</span>
-                      </Link>
-                    ) : null;
-                  })()}
-
+                  {form.meetLink &&
+                    (() => {
+                      const platform = platformOptions.find((opt) => opt.value === form.platform);
+                      return platform ? (
+                        <Link
+                          className={`btn btn-sm ${
+                            platform.value === "youtube"
+                              ? "btn-error"
+                              : platform.value === "twitter"
+                              ? "btn-black"
+                              : "btn-primary"
+                          }`}
+                          target="_blank"
+                          href={form.meetLink}
+                        >
+                          {platform.icon}
+                          <span className="pt-1">{platform.label}</span>
+                        </Link>
+                      ) : null;
+                    })()}
                 </div>
               </div>
             </div>
           </div>
-
           <div className="w-full">
-            {/* Wallet Button */}
             <button
               onClick={() => setShowWalletModal(true)}
               className="btn border border-black text-white bg-gray-700 hover:bg-black hover:text-white w-full mt-4 flex items-center justify-center gap-2"
@@ -422,21 +519,41 @@ export default function MintNFTPage() {
                   : "Connect Wallet"}
               </span>
             </button>
-
-            {/* Mint Button */}
             {walletAddress && (
               <button
                 onClick={handleSignMinter}
                 className="btn bg-blue-600 cursor-pointer text-white border-none hover:bg-blue-800 w-full mt-2"
                 disabled={loading}
               >
-                {loading ? "Minting..." : "Mint NFT [10 ₳]"}
+                {loading ? "Minting..." : "Mint NFT [0 ₳]"}
               </button>
             )}
+            {form.platform === "gmeet" &&
+              !user.providerData.find(
+                (provider) => provider.providerId === GoogleAuthProvider.PROVIDER_ID
+              ) && (
+                <button
+                  onClick={handleSignInWithGoogle}
+                  className="btn bg-blue-500 cursor-pointer text-white border-none hover:bg-blue-700 w-full mt-2"
+                  disabled={loading}
+                >
+                  Sign in with Google for Meet
+                </button>
+              )}
+            {form.platform === "gmeet" &&
+              user.providerData.find(
+                (provider) => provider.providerId === GoogleAuthProvider.PROVIDER_ID
+              ) && (
+                <button
+                  onClick={generateMeetLink}
+                  className="btn bg-green-500 cursor-pointer text-white border-none hover:bg-green-700 w-full mt-2"
+                  disabled={loading || !form.date || !form.time}
+                >
+                  Generate Google Meet Link
+                </button>
+              )}
           </div>
         </div>
-
-        {/* Form Event Created */}
         <div className="card w-full mx-auto space-y-6 pb-4">
           {status && <AlertMessage message={status} />}
           <div className="py-4 overflow-y-scroll">
@@ -445,12 +562,10 @@ export default function MintNFTPage() {
               <span className="text-green-500">Event NFT</span>
             </h1>
             <p className="text-gray-600 font-medium text-lg">
-              Create Event NFTs for your events for a fee of 10 ADA.
+              Create Event NFTs for your events for a fee of 0 ADA.
             </p>
           </div>
-
           <div className="space-y-4 text-left">
-            {/* Name */}
             <div className="form-control">
               <label className="label text-black capitalize">Event Name</label>
               <input
@@ -463,13 +578,10 @@ export default function MintNFTPage() {
                 disabled={loading}
               />
             </div>
-
-            {/* Image */}
             <div className="form-control">
               <label className="label text-black capitalize">
-                Event Banner  {loading && (
-                  <span className="loading loading-dots loading-lg"></span>
-                )}
+                Event Banner{" "}
+                {loading && <span className="loading loading-dots loading-lg"></span>}
               </label>
               <input
                 type="file"
@@ -478,11 +590,8 @@ export default function MintNFTPage() {
                 className="file-input file-input-bordered w-full bg-transparent"
                 disabled={loading}
               />
-
             </div>
-
             <div className="flex justify-between gap-2">
-              {/* Date */}
               <div className="form-control w-full">
                 <label className="label text-black capitalize">Date</label>
                 <input
@@ -494,8 +603,6 @@ export default function MintNFTPage() {
                   disabled={loading}
                 />
               </div>
-
-              {/* Time */}
               <div className="form-control w-full">
                 <label className="label text-black capitalize">Time</label>
                 <input
@@ -507,8 +614,6 @@ export default function MintNFTPage() {
                   disabled={loading}
                 />
               </div>
-
-              {/* Timezone */}
               <div className="form-control w-full">
                 <label className="label text-black capitalize">Timezone</label>
                 <select
@@ -526,13 +631,9 @@ export default function MintNFTPage() {
                 </select>
               </div>
             </div>
-
-            {/* Platform */}
             <div className="grid grid-cols-3 gap-3">
               <div className="form-control">
-                <label className="label text-black capitalize">
-                  Conference Call
-                </label>
+                <label className="label text-black capitalize">Conference Platform</label>
                 <Select
                   options={platformOptions}
                   value={platformOptions.find((opt) => opt.value === form.platform)}
@@ -548,31 +649,27 @@ export default function MintNFTPage() {
                   classNamePrefix="react-select"
                 />
               </div>
-
-
-              {/* Meet Link */}
               <div className="form-control col-span-2">
                 <label className="label text-black capitalize">
-                  {form.platform === "zoom" ? "Zoom" : "Google Meet"} Link
+                  {platformOptions.find((opt) => opt.value === form.platform)?.label} Link
                 </label>
                 <input
                   type="url"
                   name="meetLink"
                   placeholder={
-                    form.platform === "zoom"
-                      ? "https://zoom.us/j/..."
-                      : "https://meet.google.com/..."
+                    form.platform === "gmeet"
+                      ? "https://meet.google.com/..."
+                      : form.platform === "youtube"
+                      ? "https://youtube.com/watch?v=..."
+                      : "https://x.com/i/spaces/..."
                   }
                   value={form.meetLink}
                   onChange={(e) => setForm({ ...form, meetLink: e.target.value })}
                   className="input input-bordered w-full bg-transparent"
-                  disabled={loading}
+                  disabled={loading || form.platform === "gmeet"}
                 />
               </div>
             </div>
-
-
-            {/* Description */}
             <div className="form-control">
               <label className="label text-black capitalize">Description</label>
               <textarea
@@ -585,8 +682,6 @@ export default function MintNFTPage() {
                 disabled={loading}
               />
             </div>
-
-            {/* Fee */}
             <div className="form-control">
               <label className="label text-black capitalize">Fee</label>
               <input
@@ -599,21 +694,14 @@ export default function MintNFTPage() {
                 disabled={loading}
               />
             </div>
-
             <TagsInput
               form={{ tags: form.tags }}
               setForm={(updatedForm) => handleTagsChange(updatedForm.tags)}
               loading={loading}
             />
-
-
-
           </div>
         </div>
-
       </div>
-
-
       {showWalletModal && (
         <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center">
           <div className="bg-white p-6 rounded-lg shadow-xl text-center space-y-4 max-w-md w-full">
@@ -640,8 +728,7 @@ export default function MintNFTPage() {
             </button>
           </div>
         </div>
-      )
-      }
-    </section >
+      )}
+    </section>
   );
 }

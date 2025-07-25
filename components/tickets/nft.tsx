@@ -7,12 +7,11 @@ interface NFTCertificateProps {
   username: string;
   date: string;
   eventId: string;
-  reffNumber: string;
   organizer: string;
 }
 
 const NFTCertificate = forwardRef<HTMLDivElement, NFTCertificateProps>(
-  ({ title, image, description, username, date, eventId, reffNumber, organizer }, ref) => {
+  ({ title, image, description, username, date, eventId, organizer }, ref) => {
     return (
       <div
         ref={ref}
@@ -24,9 +23,6 @@ const NFTCertificate = forwardRef<HTMLDivElement, NFTCertificateProps>(
           <div className="text-xs sm:text-sm text-gray-600 text-right leading-tight max-w-lg">
             <div>
               <strong>Certificate no:</strong> <span className="uppercase">{eventId}</span>
-            </div>
-            <div>
-              <strong>Reference Number:</strong> <span className="uppercase">{reffNumber}</span>
             </div>
           </div>
         </div>

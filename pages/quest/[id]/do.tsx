@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/router";
-import { doc, setDoc, getDoc, getDocs, collection } from "firebase/firestore"; // Added getDocs and collection
+import { doc, setDoc, getDoc, getDocs, collection } from "firebase/firestore";
 import { db, auth } from "@/config";
 import { onAuthStateChanged } from "firebase/auth";
 import { ToastContainer, toast } from "react-toastify";
@@ -9,7 +9,7 @@ import Link from "next/link";
 import { DotLottieReact } from "@lottiefiles/dotlottie-react";
 import LoadingScreen from "@/components/loading-screen";
 import ErrorPage from "@/pages/error";
-import { FaCalendarCheck, FaCheckCircle, FaCloudversify, FaDiscord, FaFirefoxBrowser, FaStop, FaStopCircle } from "react-icons/fa";
+import { FaCalendarCheck, FaCheckCircle, FaCloudversify, FaDiscord, FaFirefoxBrowser, FaStopCircle } from "react-icons/fa";
 import { BsArrowLeft } from "react-icons/bs";
 import { FaXTwitter } from "react-icons/fa6";
 
@@ -71,9 +71,9 @@ export default function DoQuestPage() {
   const [quest, setQuest] = useState<Quest | null>(null);
   const [userProgress, setUserProgress] = useState<UserProgress | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
-  const [totalPoints, setTotalPoints] = useState<number>(0); // New state for total points across all users
-  const [eligiblePoints, setEligiblePoints] = useState<number>(0); // New state for user's eligible points
-  const [isQuestExpired, setIsQuestExpired] = useState<boolean>(false); // New state for quest expiration
+  const [totalPoints, setTotalPoints] = useState<number>(0);
+  const [eligiblePoints, setEligiblePoints] = useState<number>(0);
+  const [isQuestExpired, setIsQuestExpired] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [authReady, setAuthReady] = useState(false);
@@ -110,14 +110,13 @@ export default function DoQuestPage() {
         getDoc(doc(db, "quests", id)),
         getDoc(doc(db, "users", auth.currentUser.uid)),
         getDoc(doc(db, "quests", id, "userProgress", auth.currentUser.uid)),
-        getDocs(collection(db, "quests", id, "userProgress")), // Fetch all userProgress
+        getDocs(collection(db, "quests", id, "userProgress")),
       ]);
 
       if (questDoc.exists()) {
         const questData = { id: questDoc.id, ...questDoc.data(), tasks: questDoc.data().tasks || [] } as Quest;
         setQuest(questData);
 
-        // Check if quest is expired
         const deadlineDate = new Date(questData.deadline);
         const currentDate = new Date();
         const isExpired = deadlineDate < currentDate || questData.status.toLowerCase() === "end";
@@ -152,7 +151,6 @@ export default function DoQuestPage() {
         });
       }
 
-      // Calculate total points across all users
       const total = progressSnapshot.docs.reduce((sum, doc) => {
         const data = doc.data() as UserProgress;
         return sum + (data.pointsCollected || 0);
@@ -174,13 +172,12 @@ export default function DoQuestPage() {
     }
   }, [fetchQuestAndUserData, authReady]);
 
-  // Calculate eligible points whenever quest or userProgress changes
   useEffect(() => {
     if (quest && userProgress && totalPoints > 0) {
       const userPoints = userProgress.pointsCollected || 0;
       const proportion = userPoints / totalPoints;
       const eligible = proportion * quest.reward;
-      setEligiblePoints(Number(eligible.toFixed(2))); // Round to 2 decimal places
+      setEligiblePoints(Number(eligible.toFixed(2)));
     } else {
       setEligiblePoints(0);
     }
@@ -194,13 +191,24 @@ export default function DoQuestPage() {
     const { taskType, link } = task;
     const { twitterUsername, discordUsername, walletAddress } = userData;
 
+    // Pre-validate user data
+    if (["follow twitter", "retweet tweet", "like tweet"].includes(taskType.toLowerCase()) && !twitterUsername) {
+      return { verified: false, message: "Please add your Twitter username in your profile." };
+    }
+    if (taskType.toLowerCase() === "join discord" && !discordUsername) {
+      return { verified: false, message: "Please add your Discord username in your profile." };
+    }
+    if (["visit website", "check visit website"].includes(taskType.toLowerCase()) && !walletAddress) {
+      return { verified: false, message: "Please connect your wallet in your profile." };
+    }
+
     try {
       let body: any;
       let apiType: string;
 
       switch (taskType.toLowerCase()) {
         case "follow twitter":
-          if (!twitterUsername || !isValidTwitterUsername(twitterUsername)) {
+          if (!isValidTwitterUsername(twitterUsername)) {
             return { verified: false, message: "Invalid Twitter username in your profile." };
           }
           if (!isValidTwitterUsername(link)) {
@@ -216,7 +224,7 @@ export default function DoQuestPage() {
 
         case "retweet tweet":
         case "like tweet":
-          if (!twitterUsername || !isValidTwitterUsername(twitterUsername)) {
+          if (!isValidTwitterUsername(twitterUsername)) {
             return { verified: false, message: "Invalid Twitter username in your profile." };
           }
           const tweetId = extractTweetId(link);
@@ -232,9 +240,6 @@ export default function DoQuestPage() {
           break;
 
         case "join discord":
-          if (!discordUsername) {
-            return { verified: false, message: "Please add your Discord username in your profile." };
-          }
           const [guildId, roleId] = link.split(":");
           if (!guildId || !roleId) {
             return { verified: false, message: "Invalid Discord guild or role ID." };
@@ -249,28 +254,11 @@ export default function DoQuestPage() {
           break;
 
         case "visit website":
-          if (!auth.currentUser.uid || !walletAddress) {
-            return { verified: false, message: "Please connect your wallet." };
-          }
-          if (!isValidUrl(link)) {
-            return { verified: false, message: "Invalid website URL." };
-          }
-          apiType = "visit_link";
-          body = {
-            type: apiType,
-            userId: auth.currentUser.uid,
-            link,
-          };
-          break;
-
         case "check visit website":
-          if (!auth.currentUser.uid || !walletAddress) {
-            return { verified: false, message: "Please connect your wallet." };
-          }
           if (!isValidUrl(link)) {
             return { verified: false, message: "Invalid website URL." };
           }
-          apiType = "check_visit_link";
+          apiType = taskType.toLowerCase() === "visit website" ? "visit_link" : "check_visit_link";
           body = {
             type: apiType,
             userId: auth.currentUser.uid,
@@ -306,7 +294,7 @@ export default function DoQuestPage() {
       return {
         verified: false,
         message: error.message.includes("User not found")
-          ? "Invalid Twitter or Discord username provided."
+          ? "Invalid Twitter or Discord username provided. Please update your profile."
           : `Task verification failed: ${error.message}`,
       };
     }
@@ -361,7 +349,6 @@ export default function DoQuestPage() {
 
           setUserProgress(updatedProgress);
 
-          // Recalculate total points after updating user progress
           const progressSnapshot = await getDocs(collection(db, "quests", quest.id, "userProgress"));
           const total = progressSnapshot.docs.reduce((sum, doc) => {
             const data = doc.data() as UserProgress;
@@ -390,7 +377,7 @@ export default function DoQuestPage() {
     switch (taskType.toLowerCase()) {
       case "follow twitter":
         if (isValidTwitterUsername(link)) {
-          window.location.href = `https://twitter.com/${link}`;
+          window.open(`https://twitter.com/${link}`, "_blank");
         } else {
           toast.error("Invalid Twitter username for this task.");
         }
@@ -398,7 +385,7 @@ export default function DoQuestPage() {
       case "visit website":
       case "check visit website":
         if (isValidUrl(link)) {
-          window.location.href = link;
+          window.open(link, "_blank");
         } else {
           toast.error("Invalid website URL.");
         }
@@ -406,7 +393,7 @@ export default function DoQuestPage() {
       case "retweet tweet":
       case "like tweet":
         if (isValidUrl(link)) {
-          window.location.href = link;
+          window.open(link, "_blank");
         } else {
           toast.error("Invalid tweet URL.");
         }
@@ -414,7 +401,7 @@ export default function DoQuestPage() {
       case "join discord":
         const [inviteCode] = link.split(":");
         if (inviteCode) {
-          window.location.href = `https://discord.com/invite/${inviteCode}`;
+          window.open(`https://discord.com/invite/${inviteCode}`, "_blank");
         } else {
           toast.error("Invalid Discord invite code.");
         }
@@ -426,7 +413,7 @@ export default function DoQuestPage() {
 
   if (loading || !authReady) {
     console.log("Rendering loading state");
-    return <LoadingScreen />
+    return <LoadingScreen />;
   }
 
   if (error) {
@@ -436,7 +423,7 @@ export default function DoQuestPage() {
 
   if (!quest) {
     console.log("Rendering quest not found state");
-    return <ErrorPage error={"Quest not found!"} />;
+    return <ErrorPage error="Quest not found!" />;
   }
 
   console.log("Rendering main content, quest:", quest);
@@ -448,7 +435,7 @@ export default function DoQuestPage() {
           <div className="avatar">
             <div className="ring-gray-300 ring-offset-base-100 w-32 rounded-lg shadow-lg ring-2 ring-offset-2">
               <img
-                src={"/img/logo.png"}
+                src="/img/logo.png"
                 alt="Quest avatar"
                 onError={(e) => ((e.target as HTMLImageElement).src = "/img/logo.png")}
               />
@@ -457,13 +444,11 @@ export default function DoQuestPage() {
           <div className="space-y-2 w-full text-start">
             <p className="font-semibold leading-none text-2xl">{quest.name}</p>
             <p className="text-sm break-words whitespace-normal">{quest.description}</p>
-            <button className="btn bt-sm">
+            <button className="btn btn-sm">
               <FaCalendarCheck />
               <span className="pt-1">{new Date(quest.deadline).toLocaleDateString()}</span>
-              <div className={`badge badge-sm badge-${isQuestExpired ? 'secondary' : 'success'}`}>
-                <span className="pt-1">
-                  {isQuestExpired ? 'Expired' : 'On Going'}
-                </span>
+              <div className={`badge badge-sm badge-${isQuestExpired ? "secondary" : "success"}`}>
+                <span className="pt-1">{isQuestExpired ? "Expired" : "On Going"}</span>
               </div>
             </button>
           </div>
@@ -478,7 +463,10 @@ export default function DoQuestPage() {
               <span className="text-xl">🏆 Points</span>
             </div>
             <div className="py-1">
-              <button className={`btn btn-${isQuestExpired ? 'secondary cursor-not-allowed' : 'success cursor-pointer'} btn-block`}>
+              <button
+                className={`btn btn-${isQuestExpired ? "secondary cursor-not-allowed" : "success cursor-pointer"} btn-block`}
+                disabled={isQuestExpired}
+              >
                 🏆 Claim <strong>{eligiblePoints} {quest.tokenName}</strong> Rewards
               </button>
             </div>
@@ -494,15 +482,21 @@ export default function DoQuestPage() {
           />
           <div className="p-10 w-full text-end z-50 space-y-2 flex items-center justify-start">
             <div className="space-y-2">
-              <span className="font-semibold text-4xl bg-gradient-to-r from-sky-400 to-indigo-600 bg-clip-text text-transparent break-words whitespace-nowrap">Rewards :
-                <span className="text-white ml-2">{quest.reward} {quest.tokenName}</span>
+              <span className="font-semibold text-4xl bg-gradient-to-r from-sky-400 to-indigo-600 bg-clip-text text-transparent break-words whitespace-nowrap">
+                Rewards: <span className="text-white ml-2">{quest.reward} {quest.tokenName}</span>
               </span>
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <p className="font-medium text-start text-gray-300">Eligible Reward</p>
-                  <p className="font-medium text-start text-gray-300">{userProgress?.pointsCollected || 0} / {totalPoints} Points</p>
+                  <p className="font-medium text-start text-gray-300">
+                    {userProgress?.pointsCollected || 0} / {totalPoints} Points
+                  </p>
                 </div>
-                <progress className="progress progress-info w-full bg-white" value={userProgress?.pointsCollected || 0} max={totalPoints}></progress>
+                <progress
+                  className="progress progress-info w-full bg-white"
+                  value={userProgress?.pointsCollected || 0}
+                  max={totalPoints}
+                ></progress>
               </div>
             </div>
           </div>
@@ -523,60 +517,78 @@ export default function DoQuestPage() {
               const isVisitTask = ["visit website", "check visit website"].includes(
                 task.taskType.toLowerCase()
               );
+              const isDisabled =
+                isQuestExpired ||
+                isCompleted ||
+                submitting ||
+                (isTwitterTask && !userData?.twitterUsername) ||
+                (isDiscordTask && !userData?.discordUsername) ||
+                (isVisitTask && !userData?.walletAddress);
+
+              let tooltipMessage = "";
+              if (isQuestExpired) {
+                tooltipMessage = "Quest has expired";
+              } else if (isCompleted) {
+                tooltipMessage = "Task already completed";
+              } else if (isTwitterTask && !userData?.twitterUsername) {
+                tooltipMessage = "Add your Twitter username in your profile";
+              } else if (isDiscordTask && !userData?.discordUsername) {
+                tooltipMessage = "Add your Discord username in your profile";
+              } else if (isVisitTask && !userData?.walletAddress) {
+                tooltipMessage = "Connect your wallet in your profile";
+              } else {
+                tooltipMessage = "Click to visit task link";
+              }
 
               return (
-                <button
+                <div
                   key={index}
-                  onClick={
-                    isQuestExpired && !isCompleted && (
-                      () => handleTaskRedirect(task)
-                    )}
-                  className={`flex justify-between w-full items-center 
-                    ${isQuestExpired ? 'cursor-not-allowed' : 'cursor-pointer'}
-                     bg-white text-black p-4 sm:p-5 rounded-xl border border-[#487eb0] hover:shadow-[0_4px_0px_0px_#487eb0] transition-shadow`}>
-
+                  className={`flex justify-between w-full items-center bg-white text-black p-4 sm:p-5 rounded-xl border border-[#487eb0] hover:shadow-[0_4px_0px_0px_#487eb0] transition-shadow ${
+                    isQuestExpired || isCompleted ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                  }`}
+                  onClick={() => !isQuestExpired && !isCompleted && handleTaskRedirect(task)}
+                >
                   <div className="flex items-center gap-3">
-
                     <div className="w-8 h-8 bg-white rounded-md flex items-center justify-center">
-                      {isTwitterTask ? <FaXTwitter className="text-black" /> :
-                        isDiscordTask ? <FaDiscord className="text-indigo-600" /> :
-                          <FaFirefoxBrowser className="text-orange-400" />}
+                      {isTwitterTask ? (
+                        <FaXTwitter className="text-black" />
+                      ) : isDiscordTask ? (
+                        <FaDiscord className="text-indigo-600" />
+                      ) : (
+                        <FaFirefoxBrowser className="text-orange-400" />
+                      )}
                     </div>
-
                     <p className="font-semibold text-xl sm:text-base pt-1">
                       {isTwitterTask
                         ? `Visit the Twitter account or tweet`
                         : isDiscordTask
-                          ? `Join the Discord server`
-                          : isVisitTask
-                            ? `Visit the website`
-                            : `Complete the task at: ${task.link}`}
+                        ? `Join the Discord server`
+                        : isVisitTask
+                        ? `Visit the website`
+                        : `Complete the task at: ${task.link}`}
                     </p>
                   </div>
-
                   <div className="flex gap-2 items-center justify-center">
-
                     <div className="flex items-center gap-2 border bg-transparent border-[#487eb0] text-[#487eb0] px-3 pt-2 pb-1 rounded-full font-bold">
-                      🏆  +{task.points}
+                      🏆 +{task.points}
                     </div>
-
-                    <div className="tooltip" data-tip="Verify Task!">
+                    <div className="tooltip" data-tip={isCompleted ? "Task completed!" : "Verify Task!"}>
                       <button
-                        onClick={() => handleTaskSubmit(index, task)}
-                        className={`btn btn-sm align-middle text-white rounded-full 
-                          ${isQuestExpired ||
-                            submitting ||
-                            (isTwitterTask && !userData?.twitterUsername) ||
-                            (isDiscordTask && !userData?.discordUsername) ||
-                            (isVisitTask && !userData?.walletAddress) ? 'bg-gray-500 cursor-not-allowed' : 'bg-green-500 cursor-pointer'}`}>
+                        onClick={(e) => {
+                          e.stopPropagation(); // Prevent triggering the parent div's onClick
+                          handleTaskSubmit(index, task);
+                        }}
+                        className={`btn btn-sm align-middle text-white rounded-full ${
+                          isDisabled ? "bg-gray-500 cursor-not-allowed" : "bg-green-500 cursor-pointer"
+                        }`}
+                        disabled={isDisabled}
+                      >
                         {isCompleted ? <FaCheckCircle /> : <FaStopCircle />}
-
-                        <span className="pt-1">{isCompleted ? 'Completed' : 'Not Completed'}</span>
-
+                        <span className="pt-1">{isCompleted ? "Completed" : "Not Completed"}</span>
                       </button>
                     </div>
                   </div>
-                </button>
+                </div>
               );
             })
           ) : (
@@ -592,7 +604,6 @@ export default function DoQuestPage() {
           )}
         </div>
       </div>
-
       <ToastContainer position="top-right" autoClose={3000} />
     </section>
   );

@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { BsCheck2Circle } from "react-icons/bs";
 import ConnectWallet from "@/components/button/ConnectWallet";
 import { DotLottieReact } from "@lottiefiles/dotlottie-react";
-import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
 import { doc, setDoc, collection as collectionRef, getDocs, runTransaction } from "firebase/firestore";
 import { db, auth } from "@/config";
@@ -347,7 +346,6 @@ export default function CreateQuestPage() {
         animation: "bg-scrolling-reverse 0.92s linear infinite",
       }}
     >
-      <Navbar />
       <div
         className="w-full text-gray-800 flex flex-col md:flex-row justify-between items-start gap-5 p-4"
       >
@@ -527,13 +525,6 @@ export default function CreateQuestPage() {
               </div>
             )}
           </div>
-
-          <footer className="footer bg-white text-black items-center px-10 py-4 border-t mt-4">
-            <aside className="grid-flow-col items-center">
-              <img src="/img/emblem.png" alt="emblem" width={46} />
-              <p>© {currentYear} Cardano Hub Indonesia - All rights reserved</p>
-            </aside>
-          </footer>
         </div>
 
         <div className="bg-transparent text-center p-10 md:p-48 flex-1">
@@ -598,8 +589,6 @@ export default function CreateQuestPage() {
           </div>
         </div>
       )}
-
-      <Footer />
       <ToastContainer position="bottom-right" autoClose={3000} />
     </div>
   );
