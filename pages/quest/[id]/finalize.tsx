@@ -142,8 +142,7 @@ export default function FinalizeQuestPage() {
       toast.error(`Failed to connect wallet: ${error.message || error}`);
     }
   };
-
-  // Build transaction to deposit tokens into smart contract
+/**{Todo Fix build tx sign to send token in admin address / Create policy scripts} */
   const buildUnsignedTxs = async (
     wallet: BrowserWallet,
     amount: number,
@@ -155,7 +154,7 @@ export default function FinalizeQuestPage() {
     try {
       const tx = new Transaction({ initiator: wallet });
       const asset: Asset = {
-        unit: `${policyId}${tokenName}`,
+        unit: `${policyId}${tokenName}`,  
         quantity: amount.toString(),
       };
       tx.sendAssets({ address: contractAddress }, [asset]);
@@ -167,7 +166,6 @@ export default function FinalizeQuestPage() {
     }
   };
 
-  // Generate JSON/CSV for download
   const generateExportFile = (format: "json" | "csv") => {
     const exportData = participantsProgress
       .filter((p) => p.rewardEstimate > 0)
@@ -265,7 +263,6 @@ export default function FinalizeQuestPage() {
       const txHash = await wallet.submitTx(signedTxs[0]);
       toast.success(`Transaction submitted: ${txHash.slice(0, 10)}...`);
 
-      // Update quest status
       const questRef = doc(db, "quests", questId as string);
       await setDoc(questRef, {
         ...quest,

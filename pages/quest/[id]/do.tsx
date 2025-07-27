@@ -11,7 +11,7 @@ import LoadingScreen from "@/components/loading-screen";
 import ErrorPage from "@/pages/error";
 import { FaCalendarCheck, FaCheckCircle, FaCloudversify, FaDiscord, FaFirefoxBrowser, FaStopCircle } from "react-icons/fa";
 import { BsArrowLeft } from "react-icons/bs";
-import { FaXTwitter } from "react-icons/fa6";
+import { FaX } from "react-icons/fa6";
 
 interface Task {
   taskType: string;
@@ -35,7 +35,7 @@ interface Quest {
   deadline: string;
   tokenPolicyId: string;
   tokenName: string;
-  creatorWalletAddress: string;
+  creatorUid: string;
   status: string;
 }
 
@@ -43,6 +43,7 @@ interface UserData {
   twitterUsername?: string;
   discordUsername?: string;
   walletAddress?: string;
+  userId?: string;
 }
 
 function extractTweetId(url: string): string | undefined {
@@ -96,7 +97,6 @@ export default function DoQuestPage() {
     return () => unsubscribe();
   }, [authReady, router]);
 
-
   const canClaim = quest?.status?.toLowerCase() === "end" || isQuestExpired;
 
   const fetchQuestAndUserData = useCallback(async () => {
@@ -136,6 +136,7 @@ export default function DoQuestPage() {
           twitterUsername: data.twitterUsername || "",
           discordUsername: data.discordUsername || "",
           walletAddress: data.walletAddress || "",
+          userId: data.uid || "",
         });
       } else {
         setError("User data not found. Please complete your profile.");
@@ -445,13 +446,20 @@ export default function DoQuestPage() {
           <div className="space-y-2 w-full text-start">
             <p className="font-semibold leading-none text-2xl">{quest.name}</p>
             <p className="text-sm break-words whitespace-normal">{quest.description}</p>
-            <button className="btn btn-sm">
-              <FaCalendarCheck />
-              <span className="pt-1">{new Date(quest.deadline).toLocaleDateString()}</span>
-              <div className={`badge badge-sm badge-${isQuestExpired ? "secondary" : "success"}`}>
-                <span className="pt-1">{isQuestExpired ? "Expired" : "On Going"}</span>
-              </div>
-            </button>
+            <div className="flex items-center gap-2">
+              <button className="btn btn-sm">
+                <FaCalendarCheck />
+                <span className="pt-1">{new Date(quest.deadline).toLocaleDateString()}</span>
+                <div className={`badge badge-sm badge-${isQuestExpired ? "secondary" : "success"}`}>
+                  <span className="pt-1">{isQuestExpired ? "Expired" : "On Going"}</span>
+                </div>
+              </button>
+              {userData?.userId === quest.creatorUid && (
+                <Link href={`/quest/${quest.id}/finalize`} className="btn btn-sm btn-primary">
+                  Finalize Quest
+                </Link>
+              )}
+            </div>
           </div>
         </div>
 
@@ -552,7 +560,7 @@ export default function DoQuestPage() {
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-white rounded-md flex items-center justify-center">
                       {isTwitterTask ? (
-                        <FaXTwitter className="text-black" />
+                        <FaX className="text-black" />
                       ) : isDiscordTask ? (
                         <FaDiscord className="text-indigo-600" />
                       ) : (
