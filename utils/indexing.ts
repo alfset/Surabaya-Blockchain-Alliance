@@ -6,7 +6,7 @@ if (!BLOCKFROST_API_KEY) {
   throw new Error('NEXT_PUBLIC_BLOCKFROST_KEY is not defined in environment variables');
 }
 
-const BASE_URL = 'https://cardano-preview.blockfrost.io/api/v0';
+const BASE_URL = 'https://cardano-mainnet.blockfrost.io/api/v0';
 const HEADERS = { project_id: BLOCKFROST_API_KEY };
 
 interface AssetOwner {
